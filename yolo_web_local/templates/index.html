@@ -2,15 +2,9 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>YOLOv8 Mobile Camera</title>
-    <style>
-        body { text-align: center; font-family: Arial, sans-serif; background: #222; color: #fff; margin: 0; padding: 10px; }
-        h1 { font-size: 18px; margin: 10px 0; }
-        #container { position: relative; display: inline-block; max-width: 100%; }
-        img, video { width: 100%; max-width: 480px; border: 3px solid #4CAF50; border-radius: 8px; display: block; margin: 0 auto; }
-        video { display: none; } /* Ẩn thẻ video gốc, chỉ hiển thị kết quả trả về từ YOLO */
-        button { padding: 10px 20px; font-size: 15px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 10px; }
-    </style>
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
     <h1>🎥 Nhận diện vật cản YOLOv8 (Camera Sau)</h1>
@@ -18,7 +12,7 @@
     <br>
     <video id="video" autoplay playsinline></video>
     <canvas id="canvas" style="display:none;"></canvas>
-    <div>
+    <div id="container">
         <img id="result" alt="Đang chờ kết nối camera...">
     </div>
 
