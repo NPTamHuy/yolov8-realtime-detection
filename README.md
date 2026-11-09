@@ -74,7 +74,3 @@ python app.py
 * **Backend:** Python, Flask
 * **Frontend:** HTML5, CSS3, JavaScript (Fetch API, Canvas), Bootstrap 5
 
-## 👨‍🎓 Tác giả
-* **Môn học:** Chuyên đề Học máy
-* **Sinh viên thực hiện:** [Tên của bạn]
-* **Mã sinh viên:** [Mã SV của bạn]
