@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="vi" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YOLOv8 Obstacle Detection</title>
+    <!-- Cài đặt Bootstrap 5 Dark Theme -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #121212;
+            color: #e0e0e0;
+        }
+        .navbar {
+            background-color: #000000 !important;
+            border-bottom: 2px solid #00E676; /* Accent color xanh neon */
+        }
+        .stream-container {
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto;
+            border: 3px solid #00E676;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #000;
+            min-height: 360px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .stream-container img { width: 100%; height: auto; display: block; }
+        .nav-pills .nav-link.active {
+            background-color: #00E676;
+            color: #000;
+            font-weight: bold;
+        }
+        .nav-pills .nav-link {
+            color: #00E676;
+        }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark mb-4 shadow-sm">
+    <div class="container">
+        <span class="navbar-brand mb-0 h1 fw-bold">🎥 YOLOv8 Nhận diện Vật cản (Giao thông)</span>
+    </div>
+</nav>
+
+<div class="container">
+    <!-- Điều hướng Tabs bằng đường dẫn Flask -->
+    <ul class="nav nav-pills mb-4 justify-content-center">
+        <li class="nav-item">
+            <a class="nav-link {% if request.path == '/camera' or request.path == '/' %}active{% endif %}" href="/camera">📷 Live Camera</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if request.path == '/video' %}active{% endif %}" href="/video">🎬 Nhận diện Video</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if request.path == '/metrics' %}active{% endif %}" href="/metrics">📊 Báo cáo Huấn luyện</a>
+        </li>
+    </ul>
+
+    <!-- Khu vực nội dung sẽ được nạp từ các file con -->
+    {% block content %}
+    {% endblock %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<!-- Khu vực dành cho Script riêng của từng trang -->
+{% block scripts %}{% endblock %}
+</body>
+</html>

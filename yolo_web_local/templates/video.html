@@ -1,0 +1,115 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="text-center">
+    <div class="card shadow-sm p-4 mb-4 bg-dark border-secondary">
+        <h4 class="mb-3 text-light">Tải lên Video Giao thông để nhận diện</h4>
+        <div class="row justify-content-center mb-3">
+            <div class="col-md-6">
+                <div class="input-group">
+                    <input type="file" class="form-control bg-secondary text-light border-secondary" id="videoUpload" accept="video/mp4,video/x-m4v,video/*">
+                    <button class="btn btn-outline-success fw-bold" type="button" id="uploadBtn">Tải lên & Phân tích</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Khung Video -->
+        <div class="stream-container shadow-lg mb-4">
+            <img id="videoResult" alt="Đang chờ video tải lên...">
+        </div>
+
+        <!-- Khung hiển thị các vật thể cắt ra có độ chính xác cao nhất -->
+        <h5 class="text-light text-start border-bottom border-success pb-2 mb-3">🎯 Phân tích chi tiết: Vật thể chính xác nhất</h5>
+        <div class="row" id="bestDetectionsContainer">
+            <div class="col-12 text-secondary text-start">
+                Hệ thống sẽ tự động cập nhật hình ảnh vật thể nổi bật tại đây khi video đang phát...
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let pollingInterval = null;
+
+    document.getElementById('uploadBtn').addEventListener('click', () => {
+        const fileInput = document.getElementById('videoUpload');
+        const videoResult = document.getElementById('videoResult');
+
+        if (fileInput.files.length === 0) {
+            alert('Vui lòng chọn một file video!');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('video', fileInput.files[0]);
+
+        videoResult.src = "";
+        videoResult.alt = "Đang tải video lên server, vui lòng đợi...";
+
+        // Reset container ảnh
+        document.getElementById('bestDetectionsContainer').innerHTML = '<div class="col-12 text-secondary text-start">Đang phân tích dữ liệu...</div>';
+
+        fetch('/upload_video', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert(data.error);
+                videoResult.alt = "Lỗi xử lý video.";
+            } else {
+                // Bắt đầu phát stream video
+                videoResult.src = data.video_url;
+                videoResult.alt = "Đang phát video stream...";
+
+                // Kích hoạt Polling: Cứ 1.5 giây gọi API lấy vật thể tốt nhất 1 lần
+                if (pollingInterval) clearInterval(pollingInterval);
+                pollingInterval = setInterval(fetchBestDetections, 1500);
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert("Lỗi tải video");
+        });
+    });
+
+    // Hàm gọi API lấy dữ liệu và render UI
+    function fetchBestDetections() {
+        fetch('/get_best_detections')
+        .then(res => res.json())
+        .then(data => {
+            const container = document.getElementById('bestDetectionsContainer');
+
+            if (data.length > 0) {
+                container.innerHTML = ''; // Xóa chữ "Đang phân tích..."
+
+                // Lặp qua dữ liệu và render thành các card
+                data.forEach(item => {
+                    const cardHTML = `
+                        <div class="col-lg-3 col-md-4 col-sm-6 mb-3">
+                            <div class="card bg-black border-success h-100 shadow">
+                                <div style="height: 120px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #222;">
+                                    <img src="${item.image_url}" style="max-height: 100%; max-width: 100%; object-fit: contain;" alt="${item.class_name}">
+                                </div>
+                                <div class="card-body p-2 text-start">
+                                    <h6 class="card-title text-success fw-bold mb-1 text-uppercase">${item.class_name}</h6>
+                                    <p class="card-text text-light mb-0" style="font-size: 0.85rem;">
+                                        <strong>Độ tin cậy:</strong> <span class="text-warning">${item.confidence_display}%</span><br>
+                                        <strong>Tọa độ (BBox):</strong><br>
+                                        <span class="text-secondary">[${item.bbox.join(', ')}]</span>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    container.innerHTML += cardHTML;
+                });
+            }
+        });
+    }
+</script>
+{% endblock %}

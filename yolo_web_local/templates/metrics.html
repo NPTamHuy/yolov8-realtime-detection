@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<style>
+    .metric-card img {
+        width: 100%;
+        border-radius: 8px;
+        cursor: zoom-in; /* Đổi trỏ chuột thành kính lúp để gợi ý click */
+        transition: transform 0.2s;
+    }
+    .metric-card img:hover {
+        transform: scale(1.03);
+        box-shadow: 0 4px 20px rgba(0,230,118,0.3);
+    }
+    .kpi-box {
+        border-left: 4px solid #00E676;
+        background-color: #1e1e1e;
+        padding: 15px;
+        border-radius: 6px;
+    }
+</style>
+
+<!-- KPI Thống kê từ kết quả huấn luyện -->
+<div class="row mb-4 text-center">
+    <div class="col-md-3">
+        <div class="kpi-box shadow-sm">
+            <h6 class="text-secondary text-uppercase mb-1">mAP50</h6>
+            <h3 class="text-light fw-bold mb-0">0.908</h3>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="kpi-box shadow-sm">
+            <h6 class="text-secondary text-uppercase mb-1">mAP50-95</h6>
+            <h3 class="text-light fw-bold mb-0">0.730</h3>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="kpi-box shadow-sm">
+            <h6 class="text-secondary text-uppercase mb-1">Precision (P)</h6>
+            <h3 class="text-light fw-bold mb-0">0.880</h3>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="kpi-box shadow-sm">
+            <h6 class="text-secondary text-uppercase mb-1">Recall (R)</h6>
+            <h3 class="text-light fw-bold mb-0">0.870</h3>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-md-6">
+        <div class="card shadow-sm h-100 p-3 bg-dark border-secondary metric-card">
+            <h5 class="text-center text-light">Biểu đồ Huấn luyện (Loss & Metrics)</h5>
+            <img src="/static/metrics/results.png" alt="Training Results" class="zoomable-img">
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card shadow-sm h-100 p-3 bg-dark border-secondary metric-card">
+            <h5 class="text-center text-light">Đường cong F1-Confidence</h5>
+            <img src="/static/metrics/BoxF1_curve.png" alt="F1 Curve" class="zoomable-img">
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card shadow-sm h-100 p-3 bg-dark border-secondary metric-card">
+            <h5 class="text-center text-light">Ma trận Nhầm lẫn (Confusion Matrix)</h5>
+            <img src="/static/metrics/confusion_matrix.png" alt="Confusion Matrix" class="zoomable-img">
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card shadow-sm h-100 p-3 bg-dark border-secondary metric-card">
+            <h5 class="text-center text-light">Kết quả Validation (Batch 0)</h5>
+            <img src="/static/metrics/val_batch0_pred.jpg" alt="Validation Predictions" class="zoomable-img">
+        </div>
+    </div>
+</div>
+
+<!-- Modal Phóng to Ảnh -->
+<div class="modal fade" id="imageModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content bg-transparent border-0">
+            <div class="modal-header border-0 pb-0">
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Đóng"></button>
+            </div>
+            <div class="modal-body text-center pt-0">
+                <img id="modalImage" src="" alt="Phóng to" class="img-fluid rounded shadow-lg" style="max-height: 85vh; object-fit: contain;">
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Bắt sự kiện click vào các ảnh có class 'zoomable-img'
+    document.querySelectorAll('.zoomable-img').forEach(img => {
+        img.addEventListener('click', function() {
+            // Lấy link ảnh được click gán vào ảnh trong Modal
+            document.getElementById('modalImage').src = this.src;
+
+            // Kích hoạt Modal Bootstrap
+            const myModal = new bootstrap.Modal(document.getElementById('imageModal'));
+            myModal.show();
+        });
+    });
+</script>
+{% endblock %}
