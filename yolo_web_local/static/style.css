@@ -1,0 +1,56 @@
+body {
+    text-align: center;
+    font-family: Arial, sans-serif;
+    background: #222;
+    color: #fff;
+    margin: 0;
+    padding: 10px;
+}
+
+h1 {
+    font-size: 18px;
+    margin: 10px 0;
+}
+
+/* Khung chứa ảnh kết quả: rộng hơn (trước đây 480px) */
+#container {
+    position: relative;
+    width: 100%;
+    max-width: 960px;
+    margin: 0 auto;
+}
+
+img,
+video {
+    width: 100%;
+    max-width: 960px;
+    border: 3px solid #4CAF50;
+    border-radius: 8px;
+    display: block;
+    margin: 0 auto;
+    box-sizing: border-box;
+}
+
+/* Ẩn thẻ video gốc, chỉ hiển thị kết quả trả về từ YOLO */
+video {
+    display: none;
+}
+
+button {
+    padding: 10px 20px;
+    font-size: 15px;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-bottom: 10px;
+}
+
+/* Màn hình lớn: cho khung camera rộng tối đa 90% chiều ngang */
+@media (min-width: 1200px) {
+    #container,
+    img {
+        max-width: 90vw;
+    }
+}
