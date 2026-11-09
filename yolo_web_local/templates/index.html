@@ -2,93 +2,197 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <title>YOLOv8 Mobile Camera</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YOLOv8 Obstacle Detection Dashboard</title>
+    <!-- Cài đặt Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { text-align: center; font-family: Arial, sans-serif; background: #222; color: #fff; margin: 0; padding: 10px; }
-        h1 { font-size: 18px; margin: 10px 0; }
-        #container { position: relative; display: inline-block; max-width: 100%; }
-        img, video { width: 100%; max-width: 480px; border: 3px solid #4CAF50; border-radius: 8px; display: block; margin: 0 auto; }
-        video { display: none; } /* Ẩn thẻ video gốc, chỉ hiển thị kết quả trả về từ YOLO */
-        button { padding: 10px 20px; font-size: 15px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 10px; }
+        body { background-color: #f4f6f9; }
+        .stream-container {
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto;
+            border: 4px solid #0d6efd;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #000;
+            min-height: 360px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .stream-container img { width: 100%; height: auto; display: block; }
+        .metric-card img { width: 100%; border-radius: 8px; cursor: pointer; transition: transform 0.2s; }
+        .metric-card img:hover { transform: scale(1.02); box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
     </style>
 </head>
 <body>
-    <h1>🎥 Nhận diện vật cản YOLOv8 (Camera Sau)</h1>
-    <button id="switchBtn">🔄 Đổi Camera</button>
-    <br>
-    <video id="video" autoplay playsinline></video>
-    <canvas id="canvas" style="display:none;"></canvas>
-    <div>
-        <img id="result" alt="Đang chờ kết nối camera...">
+
+<nav class="navbar navbar-dark bg-primary mb-4 shadow-sm">
+    <div class="container">
+        <span class="navbar-brand mb-0 h1 fw-bold">🎥 Hệ thống Nhận diện Vật cản YOLOv8</span>
     </div>
+</nav>
 
-    <script>
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const context = canvas.getContext('2d');
-        const resultImg = document.getElementById('result');
+<div class="container">
+    <!-- Điều hướng Tabs -->
+    <ul class="nav nav-pills mb-4 justify-content-center" id="pills-tab" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active fw-semibold" id="pills-camera-tab" data-bs-toggle="pill" data-bs-target="#pills-camera" type="button" role="tab">📷 Live Camera</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link fw-semibold" id="pills-video-tab" data-bs-toggle="pill" data-bs-target="#pills-video" type="button" role="tab">🎬 Nhận diện Video</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link fw-semibold" id="pills-metrics-tab" data-bs-toggle="pill" data-bs-target="#pills-metrics" type="button" role="tab">📊 Báo cáo Huấn luyện</button>
+        </li>
+    </ul>
 
-        let useFrontCamera = false; // Mặc định dùng camera sau (environment)
-        let streaming = false;
+    <!-- Nội dung Tabs -->
+    <div class="tab-content" id="pills-tabContent">
 
-        async function startCamera() {
-            if (streaming) {
-                video.srcObject.getTracks().forEach(track => track.stop());
-            }
+        <!-- TAB 1: LIVE CAMERA -->
+        <div class="tab-pane fade show active text-center" id="pills-camera" role="tabpanel">
+            <div class="card shadow-sm p-4 mb-4">
+                <h4 class="mb-3">Phân tích luồng Camera trực tiếp</h4>
+                <div class="mb-3">
+                    <button id="toggleCameraBtn" class="btn btn-success me-2">▶ Bật Camera</button>
+                    <button id="switchBtn" class="btn btn-outline-secondary">🔄 Đổi Camera Trước/Sau</button>
+                </div>
+                <div class="stream-container">
+                    <video id="video" autoplay playsinline style="display:none;"></video>
+                    <canvas id="canvas" style="display:none;"></canvas>
+                    <img id="result" alt="Camera đang tắt. Vui lòng nhấn Bật Camera.">
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: NHẬN DIỆN VIDEO -->
+        <div class="tab-pane fade text-center" id="pills-video" role="tabpanel">
+            <div class="card shadow-sm p-4 mb-4">
+                <h4 class="mb-3">Tải lên Video để nhận diện</h4>
+                <div class="row justify-content-center mb-3">
+                    <div class="col-md-6">
+                        <div class="input-group">
+                            <input type="file" class="form-control" id="videoUpload" accept="video/mp4,video/x-m4v,video/*">
+                            <button class="btn btn-primary" type="button" id="uploadBtn">Tải lên & Xử lý</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="stream-container">
+                    <img id="videoResult" alt="Đang chờ video tải lên...">
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: BÁO CÁO HUẤN LUYỆN -->
+        <div class="tab-pane fade" id="pills-metrics" role="tabpanel">
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <div class="card shadow-sm h-100 p-3 metric-card">
+                        <h5 class="text-center">Biểu đồ Huấn luyện (Loss & Metrics)</h5>
+                        <img src="/static/metrics/results.png" alt="Training Results">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card shadow-sm h-100 p-3 metric-card">
+                        <h5 class="text-center">Ma trận Nhầm lẫn (Confusion Matrix)</h5>
+                        <img src="/static/metrics/confusion_matrix.png" alt="Confusion Matrix">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card shadow-sm h-100 p-3 metric-card">
+                        <h5 class="text-center">Đường cong F1-Confidence</h5>
+                        <img src="/static/metrics/BoxF1_curve.png" alt="F1 Curve">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card shadow-sm h-100 p-3 metric-card">
+                        <h5 class="text-center">Kết quả dự đoán Validation (Batch 0)</h5>
+                        <img src="/static/metrics/val_batch0_pred.jpg" alt="Validation Predictions">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Script Bootstrap & Logic Camera -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const context = canvas.getContext('2d');
+    const resultImg = document.getElementById('result');
+    const toggleCameraBtn = document.getElementById('toggleCameraBtn');
+    const switchBtn = document.getElementById('switchBtn');
+
+    let useFrontCamera = false;
+    let streaming = false;
+    let streamRef = null;
+
+    async function toggleCamera() {
+        if (streaming) {
+            // Tắt camera
+            streamRef.getTracks().forEach(track => track.stop());
+            streaming = false;
+            toggleCameraBtn.innerHTML = "▶ Bật Camera";
+            toggleCameraBtn.classList.replace('btn-danger', 'btn-success');
+            resultImg.src = "";
+            resultImg.alt = "Camera đã tắt.";
+        } else {
+            // Bật camera
             try {
                 const constraints = {
-                    video: {
-                        facingMode: useFrontCamera ? "user" : "environment",
-                        width: { ideal: 640 },
-                        height: { ideal: 480 }
-                    }
+                    video: { facingMode: useFrontCamera ? "user" : "environment", width: { ideal: 640 }, height: { ideal: 480 } }
                 };
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                video.srcObject = stream;
+                streamRef = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = streamRef;
                 await video.play();
                 streaming = true;
+                toggleCameraBtn.innerHTML = "⏹ Tắt Camera";
+                toggleCameraBtn.classList.replace('btn-success', 'btn-danger');
                 sendFrames();
             } catch (err) {
-                console.error("Lỗi camera: ", err);
-                alert("Không thể truy cập camera điện thoại. Hãy chắc chắn bạn đã cấp quyền!");
+                alert("Không thể truy cập camera. Vui lòng cấp quyền!");
             }
         }
+    }
 
-        document.getElementById('switchBtn').addEventListener('click', () => {
+    switchBtn.addEventListener('click', () => {
+        if (streaming) {
+            toggleCamera(); // Tắt camera hiện tại
+            setTimeout(() => { useFrontCamera = !useFrontCamera; toggleCamera(); }, 500); // Bật lại với mode mới
+        } else {
             useFrontCamera = !useFrontCamera;
-            startCamera();
-        });
-
-        // Gửi khung hình liên tục lên Flask server để xử lý
-        function sendFrames() {
-            if (!streaming) return;
-
-            canvas.width = video.videoWidth || 640;
-            canvas.height = video.videoHeight || 480;
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-            canvas.toBlob(blob => {
-                const formData = new FormData();
-                formData.append('image', blob, 'frame.jpg');
-
-                fetch('/detect', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.blob())
-                .then(blob => {
-                    resultImg.src = URL.createObjectURL(blob);
-                    // Tiếp tục gửi khung hình tiếp theo sau khi nhận kết quả để chống lag
-                    requestAnimationFrame(sendFrames);
-                })
-                .catch(err => {
-                    console.error(err);
-                    setTimeout(sendFrames, 500);
-                });
-            }, 'image/jpeg', 0.6); // Độ nén JPEG 60% giúp truyền tải qua Wi-Fi cực nhanh, không bị nghẽn
         }
+    });
 
-        startCamera();
-    </script>
+    toggleCameraBtn.addEventListener('click', toggleCamera);
+
+    function sendFrames() {
+        if (!streaming) return;
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        canvas.toBlob(blob => {
+            const formData = new FormData();
+            formData.append('image', blob, 'frame.jpg');
+
+            fetch('/detect', { method: 'POST', body: formData })
+            .then(response => response.blob())
+            .then(blob => {
+                resultImg.src = URL.createObjectURL(blob);
+                if(streaming) requestAnimationFrame(sendFrames);
+            })
+            .catch(err => {
+                console.error(err);
+                if(streaming) setTimeout(sendFrames, 500);
+            });
+        }, 'image/jpeg', 0.6);
+    }
+</script>
 </body>
 </html>
