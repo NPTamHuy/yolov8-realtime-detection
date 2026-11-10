@@ -4,28 +4,46 @@
 <div class="text-center">
     <div class="card shadow-sm p-4 mb-4 bg-dark border-secondary">
         <h4 class="mb-3 text-light">Tải lên Video Giao thông để nhận diện</h4>
+
         <div class="row justify-content-center mb-3">
-            <div class="col-md-6">
+            <div class="col-md-8">
                 <div class="input-group">
                     <input type="file" class="form-control bg-secondary text-light border-secondary" id="videoUpload" accept="video/mp4,video/x-m4v,video/*">
                     <button class="btn btn-outline-success fw-bold" type="button" id="uploadBtn">Tải lên & Phân tích</button>
+                    <button class="btn btn-outline-info fw-bold" type="button" id="replayBtn" style="display: none;">🔄 Phát lại</button>
                 </div>
             </div>
         </div>
 
-        <!-- Khung Video -->
         <div class="stream-container shadow-lg mb-4">
             <img id="videoResult" alt="Đang chờ video tải lên...">
         </div>
 
-        <!-- Khung hiển thị các vật thể cắt ra có độ chính xác cao nhất -->
-        <h5 class="text-light text-start border-bottom border-success pb-2 mb-3">🎯 Phân tích chi tiết: Vật thể chính xác nhất</h5>
-        <div class="row" id="bestDetectionsContainer">
-            <div class="col-12 text-secondary text-start">
-                Hệ thống sẽ tự động cập nhật hình ảnh vật thể nổi bật tại đây khi video đang phát...
+        <div id="analysisSection" style="display: none;">
+            <h5 class="text-light text-start border-bottom border-success pb-2 mb-3">🎯 Phân tích chi tiết: Vật thể chính xác nhất</h5>
+            <div class="row" id="bestDetectionsContainer">
+                <div class="col-12 text-secondary text-start">
+                    Đang chuẩn bị phân tích dữ liệu...
+                </div>
             </div>
         </div>
+    </div>
+</div>
 
+<!-- Modal hiển thị Lịch sử (các ảnh thấp hơn) của một Class -->
+<div class="modal fade" id="historyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content bg-dark text-light border-success">
+            <div class="modal-header border-success">
+                <h5 class="modal-title text-success fw-bold" id="historyModalTitle">Lịch sử nhận diện</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Đóng"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row" id="historyContainer">
+                    <!-- Các ảnh phụ sẽ được chèn vào đây -->
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -33,10 +51,16 @@
 {% block scripts %}
 <script>
     let pollingInterval = null;
+    let currentVideoUrl = "";
+    let globalDetections = {}; // Lưu trữ dữ liệu JSON để dùng cho Modal
 
-    document.getElementById('uploadBtn').addEventListener('click', () => {
+    const replayBtn = document.getElementById('replayBtn');
+    const videoResult = document.getElementById('videoResult');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const analysisSection = document.getElementById('analysisSection');
+
+    uploadBtn.addEventListener('click', () => {
         const fileInput = document.getElementById('videoUpload');
-        const videoResult = document.getElementById('videoResult');
 
         if (fileInput.files.length === 0) {
             alert('Vui lòng chọn một file video!');
@@ -48,59 +72,71 @@
 
         videoResult.src = "";
         videoResult.alt = "Đang tải video lên server, vui lòng đợi...";
+        replayBtn.style.display = 'none';
 
-        // Reset container ảnh
+        analysisSection.style.display = 'block';
         document.getElementById('bestDetectionsContainer').innerHTML = '<div class="col-12 text-secondary text-start">Đang phân tích dữ liệu...</div>';
 
-        fetch('/upload_video', {
-            method: 'POST',
-            body: formData
-        })
+        fetch('/upload_video', { method: 'POST', body: formData })
         .then(response => response.json())
         .then(data => {
             if (data.error) {
                 alert(data.error);
                 videoResult.alt = "Lỗi xử lý video.";
             } else {
-                // Bắt đầu phát stream video
-                videoResult.src = data.video_url;
+                currentVideoUrl = data.video_url;
+                videoResult.src = currentVideoUrl + "?t=" + new Date().getTime();
                 videoResult.alt = "Đang phát video stream...";
+                replayBtn.style.display = 'block';
 
-                // Kích hoạt Polling: Cứ 1.5 giây gọi API lấy vật thể tốt nhất 1 lần
                 if (pollingInterval) clearInterval(pollingInterval);
                 pollingInterval = setInterval(fetchBestDetections, 1500);
             }
         })
         .catch(err => {
             console.error(err);
-            alert("Lỗi tải video");
+            alert("Lỗi tải video. Vui lòng kiểm tra kết nối.");
         });
     });
 
-    // Hàm gọi API lấy dữ liệu và render UI
+    replayBtn.addEventListener('click', () => {
+        if (currentVideoUrl) {
+            videoResult.src = "";
+            videoResult.alt = "Đang tải lại luồng video...";
+            document.getElementById('bestDetectionsContainer').innerHTML = '<div class="col-12 text-secondary text-start">Đang phân tích dữ liệu...</div>';
+            setTimeout(() => { videoResult.src = currentVideoUrl + "?t=" + new Date().getTime(); }, 100);
+        }
+    });
+
+    // Cập nhật danh sách vật thể chính
     function fetchBestDetections() {
         fetch('/get_best_detections')
         .then(res => res.json())
         .then(data => {
+            globalDetections = data; // Lưu lại để dùng khi click
             const container = document.getElementById('bestDetectionsContainer');
+            const classNames = Object.keys(data);
 
-            if (data.length > 0) {
-                container.innerHTML = ''; // Xóa chữ "Đang phân tích..."
+            if (classNames.length > 0) {
+                container.innerHTML = '';
 
-                // Lặp qua dữ liệu và render thành các card
-                data.forEach(item => {
+                classNames.forEach(cls => {
+                    const topItem = data[cls][0]; // Lấy phần tử top 1 (tốt nhất)
+                    const count = data[cls].length; // Đếm số lượng ảnh trong lịch sử
+
+                    // Thêm class hover-card và onclick để gọi hàm showHistory
                     const cardHTML = `
                         <div class="col-lg-3 col-md-4 col-sm-6 mb-3">
-                            <div class="card bg-black border-success h-100 shadow">
+                            <div class="card bg-black border-success h-100 shadow" style="cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.03)'" onmouseout="this.style.transform='scale(1)'" onclick="showHistory('${cls}')">
                                 <div style="height: 120px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #222;">
-                                    <img src="${item.image_url}" style="max-height: 100%; max-width: 100%; object-fit: contain;" alt="${item.class_name}">
+                                    <img src="${topItem.image_url}" style="max-height: 100%; max-width: 100%; object-fit: contain;" alt="${topItem.class_name}">
                                 </div>
                                 <div class="card-body p-2 text-start">
-                                    <h6 class="card-title text-success fw-bold mb-1 text-uppercase">${item.class_name}</h6>
+                                    <h6 class="card-title text-success fw-bold mb-1 text-uppercase">${topItem.class_name}</h6>
                                     <p class="card-text text-light mb-0" style="font-size: 0.85rem;">
-                                        <strong>Độ tin cậy:</strong> <span class="text-warning">${item.confidence_display}%</span><br>
-                                        <strong>Tọa độ (BBox):</strong><br>
-                                        <span class="text-secondary">[${item.bbox.join(', ')}]</span>
+                                        <strong>Độ tin cậy:</strong> <span class="text-warning">${topItem.confidence_display}%</span><br>
+                                        <strong>Tọa độ:</strong> <span class="text-secondary">[${topItem.bbox.join(', ')}]</span><br>
+                                        ${count > 1 ? `<span class="badge bg-secondary mt-2">Xem thêm ${count - 1} ảnh khác</span>` : ''}
                                     </p>
                                 </div>
                             </div>
@@ -110,6 +146,46 @@
                 });
             }
         });
+    }
+
+    // Hàm hiển thị danh sách các độ chính xác thấp hơn trong Modal
+    function showHistory(cls) {
+        const historyData = globalDetections[cls];
+        const title = document.getElementById('historyModalTitle');
+        const container = document.getElementById('historyContainer');
+
+        title.innerText = `Các nhận diện khác: ${cls.toUpperCase()}`;
+        container.innerHTML = '';
+
+        if (historyData && historyData.length > 1) {
+            // Lặp từ phần tử thứ 2 (index = 1) để bỏ qua ảnh Top 1 đã hiển thị bên ngoài
+            for (let i = 1; i < historyData.length; i++) {
+                const item = historyData[i];
+                const cardHTML = `
+                    <div class="col-md-4 col-sm-6 mb-3">
+                        <div class="card bg-black border-secondary h-100">
+                            <div style="height: 150px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #111;">
+                                <img src="${item.image_url}" style="max-height: 100%; max-width: 100%; object-fit: contain;">
+                            </div>
+                            <div class="card-body p-2 text-start">
+                                <p class="card-text text-light mb-0" style="font-size: 0.85rem;">
+                                    <strong>Top ${i + 1}</strong><br>
+                                    <strong>Độ tin cậy:</strong> <span class="text-warning">${item.confidence_display}%</span><br>
+                                    <strong>Tọa độ:</strong> <span class="text-secondary">[${item.bbox.join(', ')}]</span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += cardHTML;
+            }
+        } else {
+            container.innerHTML = '<div class="col-12 text-center text-secondary">Chưa có nhận diện nào khác cho đối tượng này.</div>';
+        }
+
+        // Hiện Modal
+        const modal = new bootstrap.Modal(document.getElementById('historyModal'));
+        modal.show();
     }
 </script>
 {% endblock %}

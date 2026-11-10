@@ -14,12 +14,14 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 model = YOLO('obstacle_run_1/weights/best.pt')
 
-# Biến toàn cục lưu trữ các vật thể có độ chính xác cao nhất trong video
-best_detections = {}
+# Biến toàn cục lưu trữ DANH SÁCH các vật thể có độ chính xác cao nhất
+# Cấu trúc: {"CAR": [det_1, det_2, ...], "PERSON": [det_1, det_2, ...]}
+class_detections = {}
+MAX_HISTORY = 6  # Số lượng ảnh tối đa lưu lại cho mỗi class (1 ảnh gốc + 5 ảnh lịch sử)
 
 
 def process_frame(frame, apply_filter=False, is_video=False):
-    global best_detections
+    global class_detections
 
     if apply_filter:
         frame = cv2.GaussianBlur(frame, (5, 5), 0)
@@ -27,7 +29,7 @@ def process_frame(frame, apply_filter=False, is_video=False):
 
     results = model(frame, conf=0.5, imgsz=416)
 
-    # Nếu là luồng Video, tiến hành trích xuất hình ảnh vật thể tốt nhất
+    # Nếu là luồng Video, tiến hành trích xuất danh sách hình ảnh
     if is_video:
         for result in results:
             for box in result.boxes:
@@ -35,32 +37,38 @@ def process_frame(frame, apply_filter=False, is_video=False):
                 cls_id = int(box.cls[0])
                 cls_name = model.names[cls_id]
 
-                # Nếu class này chưa từng xuất hiện, hoặc độ tin cậy mới cao hơn cái cũ
-                if cls_name not in best_detections or conf > best_detections[cls_name]['confidence']:
-                    # Lấy tọa độ Bounding Box
+                if cls_name not in class_detections:
+                    class_detections[cls_name] = []
+
+                history = class_detections[cls_name]
+
+                # Lưu ảnh nếu danh sách chưa đầy, hoặc độ chính xác mới cao hơn ảnh kém nhất trong danh sách
+                if len(history) < MAX_HISTORY or conf > history[-1]['confidence']:
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
 
-                    # Đảm bảo tọa độ không bị tràn ra ngoài kích thước khung hình
                     h, w = frame.shape[:2]
                     x1, y1 = max(0, x1), max(0, y1)
                     x2, y2 = min(w, x2), min(h, y2)
 
-                    # Cắt ảnh vật thể (Crop)
                     if x2 > x1 and y2 > y1:
                         crop_img = frame[y1:y2, x1:x2]
-                        img_filename = f"best_{cls_name}.jpg"
+                        img_filename = f"{cls_name}_{uuid.uuid4().hex[:8]}.jpg"
                         img_path = os.path.join(app.config['UPLOAD_FOLDER'], img_filename)
                         cv2.imwrite(img_path, crop_img)
 
-                        # Cập nhật vào dictionary
-                        best_detections[cls_name] = {
+                        new_det = {
                             "class_name": cls_name,
-                            "confidence": conf,  # Lưu dạng số thập phân để so sánh
-                            "confidence_display": round(conf * 100, 2),  # % để hiển thị
+                            "confidence": conf,
+                            "confidence_display": round(conf * 100, 2),
                             "bbox": [x1, y1, x2, y2],
-                            # Gắn UUID để tránh lỗi cache trình duyệt khi ảnh bị ghi đè
-                            "image_url": f"/static/uploads/{img_filename}?t={uuid.uuid4().hex}"
+                            "image_url": f"/static/uploads/{img_filename}"
                         }
+
+                        history.append(new_det)
+                        # Sắp xếp danh sách giảm dần theo độ chính xác
+                        history.sort(key=lambda x: x['confidence'], reverse=True)
+                        # Chỉ giữ lại top MAX_HISTORY ảnh tốt nhất
+                        class_detections[cls_name] = history[:MAX_HISTORY]
 
     annotated_frame = results[0].plot()
     return annotated_frame
@@ -75,6 +83,11 @@ def index():
 @app.route('/camera')
 def camera():
     return render_template('camera.html')
+
+
+@app.route('/image')
+def image():
+    return render_template('image.html')
 
 
 @app.route('/video')
@@ -108,8 +121,8 @@ def detect():
 
 @app.route('/upload_video', methods=['POST'])
 def upload_video():
-    global best_detections
-    best_detections.clear()  # Reset lại lịch sử nhận diện khi có video mới
+    global class_detections
+    class_detections.clear()  # Reset lại lịch sử khi có video mới
 
     if 'video' not in request.files:
         return jsonify({'error': 'Không tìm thấy file video'}), 400
@@ -129,13 +142,10 @@ def generate_video_frames():
     while cap.isOpened():
         success, frame = cap.read()
         if not success:
-            # Video đã kết thúc -> Đặt lại con trỏ frame về 0 để lặp lại (Auto-loop)
             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
             continue
 
         frame = cv2.resize(frame, (640, 480))
-
-        # Bật cờ is_video=True để kích hoạt trích xuất vật thể
         annotated_frame = process_frame(frame, apply_filter=False, is_video=True)
         ret, buffer = cv2.imencode('.jpg', annotated_frame)
         yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
@@ -148,11 +158,40 @@ def video_feed():
     return Response(generate_video_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
-# API mới: Trả về danh sách các vật thể tốt nhất
 @app.route('/get_best_detections')
 def get_best_detections():
-    # Trả về danh sách (list) các giá trị trong dictionary
-    return jsonify(list(best_detections.values()))
+    # Trả về toàn bộ dictionary (chứa list các ảnh)
+    return jsonify(class_detections)
+
+
+@app.route('/upload_image', methods=['POST'])
+def upload_image():
+    if 'image' not in request.files:
+        return jsonify({'error': 'Không tìm thấy file ảnh'}), 400
+
+    file = request.files['image']
+    if file.filename == '':
+        return jsonify({'error': 'Chưa chọn file'}), 400
+
+    try:
+        file_bytes = np.frombuffer(file.read(), np.uint8)
+        frame = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+
+        if frame is None:
+            return jsonify({'error': 'File ảnh không hợp lệ'}), 400
+
+        annotated_frame = process_frame(frame, apply_filter=False, is_video=False)
+
+        result_filename = f"result_{uuid.uuid4().hex}.jpg"
+        result_path = os.path.join(app.config['UPLOAD_FOLDER'], result_filename)
+        cv2.imwrite(result_path, annotated_frame)
+
+        return jsonify({
+            'message': 'Thành công',
+            'image_url': f"/static/uploads/{result_filename}"
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':

@@ -54,6 +54,9 @@
             <a class="nav-link {% if request.path == '/camera' or request.path == '/' %}active{% endif %}" href="/camera">📷 Live Camera</a>
         </li>
         <li class="nav-item">
+            <a class="nav-link {% if request.path == '/image' %}active{% endif %}" href="/image">🖼️ Nhận diện Ảnh</a>
+        </li>
+        <li class="nav-item">
             <a class="nav-link {% if request.path == '/video' %}active{% endif %}" href="/video">🎬 Nhận diện Video</a>
         </li>
         <li class="nav-item">

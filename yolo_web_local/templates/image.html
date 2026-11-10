@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="text-center">
+    <div class="card shadow-sm p-4 mb-4 bg-dark border-secondary">
+        <h4 class="mb-3 text-light">Tải lên Hình ảnh để nhận diện</h4>
+        
+        <div class="row justify-content-center mb-4">
+            <div class="col-md-6">
+                <div class="input-group">
+                    <input type="file" class="form-control bg-secondary text-light border-secondary" id="imageUpload" accept="image/png, image/jpeg, image/jpg">
+                    <button class="btn btn-outline-primary fw-bold" type="button" id="uploadImgBtn">Tải lên & Phân tích</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Khung hiển thị ảnh -->
+        <div class="stream-container shadow-lg" style="min-height: 400px; display: flex; align-items: center; justify-content: center; background: #000;">
+            <div id="imagePlaceholder" class="text-secondary">
+                <i class="fs-1 mb-2">🖼️</i><br>
+                Chưa có hình ảnh nào được tải lên.
+            </div>
+            <!-- Ảnh kết quả được ẩn đi mặc định, chỉ hiện khi đã nhận diện xong -->
+            <img id="imageResult" src="" alt="Kết quả nhận diện" style="display: none; max-width: 100%; max-height: 70vh; object-fit: contain; cursor: zoom-in;" class="zoomable-img">
+        </div>
+    </div>
+</div>
+
+<!-- Tái sử dụng Modal Phóng to Ảnh từ trang metrics -->
+<div class="modal fade" id="imageModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content bg-transparent border-0">
+            <div class="modal-header border-0 pb-0">
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Đóng"></button>
+            </div>
+            <div class="modal-body text-center pt-0">
+                <img id="modalImage" src="" alt="Phóng to" class="img-fluid rounded shadow-lg" style="max-height: 85vh; object-fit: contain;">
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.getElementById('uploadImgBtn').addEventListener('click', () => {
+        const fileInput = document.getElementById('imageUpload');
+        const imageResult = document.getElementById('imageResult');
+        const placeholder = document.getElementById('imagePlaceholder');
+        
+        if (fileInput.files.length === 0) {
+            alert('Vui lòng chọn một file ảnh!');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('image', fileInput.files[0]);
+        
+        // Hiển thị trạng thái đang xử lý
+        placeholder.innerHTML = '<div class="spinner-border text-primary" role="status"></div><div class="mt-2">Đang phân tích ảnh...</div>';
+        placeholder.style.display = 'block';
+        imageResult.style.display = 'none';
+
+        fetch('/upload_image', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert(data.error);
+                placeholder.innerHTML = 'Lỗi xử lý ảnh.';
+            } else {
+                // Ẩn placeholder, hiện ảnh kết quả
+                placeholder.style.display = 'none';
+                imageResult.src = data.image_url;
+                imageResult.style.display = 'block';
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert("Lỗi tải ảnh. Vui lòng kiểm tra lại kết nối.");
+            placeholder.innerHTML = 'Lỗi tải ảnh.';
+        });
+    });
+
+    // Kích hoạt tính năng click để phóng to ảnh (Lightbox Modal)
+    document.getElementById('imageResult').addEventListener('click', function() {
+        document.getElementById('modalImage').src = this.src;
+        const myModal = new bootstrap.Modal(document.getElementById('imageModal'));
+        myModal.show();
+    });
+</script>
+{% endblock %}
