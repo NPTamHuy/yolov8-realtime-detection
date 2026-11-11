@@ -3,147 +3,128 @@
 {% block content %}
 <div class="text-center">
     <div class="card shadow-sm p-4 mb-4 bg-dark border-secondary">
-        <h4 class="mb-3 text-light">Tải lên Video Giao thông để nhận diện</h4>
+        <h4 class="mb-3 text-light">Phân tích luồng Camera trực tiếp</h4>
+        <div class="mb-3">
+            <button id="toggleCameraBtn" class="btn btn-success me-2 fw-bold">▶ Bật Camera</button>
+            <button id="switchBtn" class="btn btn-outline-light">🔄 Đổi Camera Trước/Sau</button>
 
-        <!-- Khu vực Tải lên và Các nút điều khiển -->
-        <div class="row justify-content-center mb-3">
-            <div class="col-md-8">
-                <div class="input-group">
-                    <input type="file" class="form-control bg-secondary text-light border-secondary" id="videoUpload" accept="video/mp4,video/x-m4v,video/*">
-                    <button class="btn btn-outline-success fw-bold" type="button" id="uploadBtn">Tải lên & Phân tích</button>
-                    <!-- Nút Phát lại (ẩn mặc định cho đến khi có video phát) -->
-                    <button class="btn btn-outline-info fw-bold" type="button" id="replayBtn" style="display: none;">🔄 Phát lại</button>
-                </div>
+            <!-- Checkbox Tiền xử lý (Bộ lọc OpenCV) -->
+            <div class="form-check form-switch d-inline-block ms-3 text-light">
+                <input class="form-check-input" type="checkbox" id="preprocessSwitch">
+                <label class="form-check-label" for="preprocessSwitch">Bật bộ lọc (OpenCV)</label>
             </div>
         </div>
 
-        <!-- Khung Video Stream -->
-        <div class="stream-container shadow-lg mb-4">
-            <img id="videoResult" alt="Đang chờ video tải lên...">
+        <!-- Khung hiển thị Camera -->
+        <div class="stream-container shadow-lg">
+            <video id="video" autoplay playsinline style="display:none;"></video>
+            <canvas id="canvas" style="display:none;"></canvas>
+            <img id="result" alt="Camera đang tắt. Vui lòng nhấn Bật Camera.">
         </div>
-
-        <!-- Khung hiển thị các vật thể cắt ra có độ chính xác cao nhất (ẨN MẶC ĐỊNH BẰNG CSS) -->
-        <div id="analysisSection" style="display: none;">
-            <h5 class="text-light text-start border-bottom border-success pb-2 mb-3">🎯 Phân tích chi tiết: Vật thể chính xác nhất</h5>
-            <div class="row" id="bestDetectionsContainer">
-                <div class="col-12 text-secondary text-start">
-                    Đang chuẩn bị phân tích dữ liệu...
-                </div>
-            </div>
-        </div>
-
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    let pollingInterval = null;
-    let currentVideoUrl = ""; // Biến lưu URL của video stream
-    const replayBtn = document.getElementById('replayBtn');
-    const videoResult = document.getElementById('videoResult');
-    const uploadBtn = document.getElementById('uploadBtn');
-    const analysisSection = document.getElementById('analysisSection');
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const context = canvas.getContext('2d');
+    const resultImg = document.getElementById('result');
+    const toggleCameraBtn = document.getElementById('toggleCameraBtn');
+    const switchBtn = document.getElementById('switchBtn');
+    const preprocessSwitch = document.getElementById('preprocessSwitch');
 
-    // Xử lý sự kiện Tải video lên
-    uploadBtn.addEventListener('click', () => {
-        const fileInput = document.getElementById('videoUpload');
+    let useFrontCamera = false;
+    let streaming = false;
+    let streamRef = null;
 
-        if (fileInput.files.length === 0) {
-            alert('Vui lòng chọn một file video!');
-            return;
-        }
+    // Hàm Bật/Tắt Camera
+    async function toggleCamera() {
+        if (streaming) {
+            // Tắt camera
+            streamRef.getTracks().forEach(track => track.stop());
+            streaming = false;
+            toggleCameraBtn.innerHTML = "▶ Bật Camera";
+            toggleCameraBtn.classList.replace('btn-danger', 'btn-success');
+            resultImg.src = "";
+            resultImg.alt = "Camera đã tắt.";
+        } else {
+            // Bật camera
+            try {
+                const constraints = {
+                    video: {
+                        facingMode: useFrontCamera ? "user" : "environment",
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    }
+                };
+                streamRef = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = streamRef;
+                await video.play();
+                streaming = true;
 
-        const formData = new FormData();
-        formData.append('video', fileInput.files[0]);
+                toggleCameraBtn.innerHTML = "⏹ Tắt Camera";
+                toggleCameraBtn.classList.replace('btn-success', 'btn-danger');
 
-        // Giao diện loading chờ server
-        videoResult.src = "";
-        videoResult.alt = "Đang tải video lên server, vui lòng đợi...";
-        replayBtn.style.display = 'none'; // Ẩn nút phát lại khi đang tải
-
-        // Hiện khu vực phân tích khi bắt đầu ấn nút tải lên
-        analysisSection.style.display = 'block';
-        document.getElementById('bestDetectionsContainer').innerHTML = '<div class="col-12 text-secondary text-start">Đang phân tích dữ liệu...</div>';
-
-        fetch('/upload_video', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                alert(data.error);
-                videoResult.alt = "Lỗi xử lý video.";
-            } else {
-                currentVideoUrl = data.video_url;
-
-                // Thêm timestamp (thời gian thực) để ép trình duyệt load lại luồng mới, không dùng bộ nhớ đệm
-                videoResult.src = currentVideoUrl + "?t=" + new Date().getTime();
-                videoResult.alt = "Đang phát video stream...";
-
-                replayBtn.style.display = 'block'; // Hiện nút phát lại
-
-                // Kích hoạt Polling: Cứ 1.5 giây gọi API lấy vật thể tốt nhất 1 lần
-                if (pollingInterval) clearInterval(pollingInterval);
-                pollingInterval = setInterval(fetchBestDetections, 1500);
+                // Bắt đầu gửi frame lên server
+                sendFrames();
+            } catch (err) {
+                alert("Không thể truy cập camera. Vui lòng cấp quyền hoặc đảm bảo đang chạy trên localhost/HTTPS!");
+                console.error(err);
             }
-        })
-        .catch(err => {
-            console.error(err);
-            alert("Lỗi tải video. Vui lòng kiểm tra lại kết nối.");
-        });
-    });
+        }
+    }
 
-    // Xử lý sự kiện click cho nút Phát lại
-    replayBtn.addEventListener('click', () => {
-        if (currentVideoUrl) {
-            videoResult.src = "";
-            videoResult.alt = "Đang tải lại luồng video...";
-
-            // Xóa thẻ phân tích cũ để bắt đầu lại từ đầu
-            document.getElementById('bestDetectionsContainer').innerHTML = '<div class="col-12 text-secondary text-start">Đang phân tích dữ liệu...</div>';
-
-            // Thêm độ trễ nhỏ 100ms để ảnh cũ kịp xóa khỏi giao diện, sau đó gọi lại stream với timestamp mới
+    // Sự kiện Đổi Camera
+    switchBtn.addEventListener('click', () => {
+        if (streaming) {
+            toggleCamera(); // Tắt camera hiện tại
+            // Đợi một chút để hệ thống giải phóng camera cũ rồi bật lại với mode mới
             setTimeout(() => {
-                videoResult.src = currentVideoUrl + "?t=" + new Date().getTime();
-            }, 100);
+                useFrontCamera = !useFrontCamera;
+                toggleCamera();
+            }, 500);
+        } else {
+            useFrontCamera = !useFrontCamera;
         }
     });
 
-    // Hàm gọi API lấy dữ liệu vật thể và render (vẽ) giao diện Thẻ (Card)
-    function fetchBestDetections() {
-        fetch('/get_best_detections')
-        .then(res => res.json())
-        .then(data => {
-            const container = document.getElementById('bestDetectionsContainer');
+    toggleCameraBtn.addEventListener('click', toggleCamera);
 
-            if (data.length > 0) {
-                container.innerHTML = ''; // Xóa chữ "Đang phân tích..."
+    // Hàm chụp ảnh từ video và gửi lên server liên tục
+    function sendFrames() {
+        if (!streaming) return;
 
-                // Lặp qua dữ liệu và render thành các card Bootstrap
-                data.forEach(item => {
-                    const cardHTML = `
-                        <div class="col-lg-3 col-md-4 col-sm-6 mb-3">
-                            <div class="card bg-black border-success h-100 shadow">
-                                <div style="height: 120px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #222;">
-                                    <img src="${item.image_url}" style="max-height: 100%; max-width: 100%; object-fit: contain;" alt="${item.class_name}">
-                                </div>
-                                <div class="card-body p-2 text-start">
-                                    <h6 class="card-title text-success fw-bold mb-1 text-uppercase">${item.class_name}</h6>
-                                    <p class="card-text text-light mb-0" style="font-size: 0.85rem;">
-                                        <strong>Độ tin cậy:</strong> <span class="text-warning">${item.confidence_display}%</span><br>
-                                        <strong>Tọa độ (BBox):</strong><br>
-                                        <span class="text-secondary">[${item.bbox.join(', ')}]</span>
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                    container.innerHTML += cardHTML;
-                });
-            }
-        });
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        canvas.toBlob(blob => {
+            const formData = new FormData();
+            formData.append('image', blob, 'frame.jpg');
+
+            // Gửi kèm trạng thái checkbox tiền xử lý
+            formData.append('use_filter', preprocessSwitch.checked);
+
+            fetch('/detect', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.blob())
+            .then(blob => {
+                // Hiển thị ảnh đã vẽ bounding box trả về từ server
+                resultImg.src = URL.createObjectURL(blob);
+
+                // Gọi đệ quy để tiếp tục gửi frame tiếp theo (Cơ chế chống nghẽn)
+                if(streaming) requestAnimationFrame(sendFrames);
+            })
+            .catch(err => {
+                console.error("Lỗi gửi frame:", err);
+                // Nếu lỗi mạng tạm thời, chờ 0.5s rồi thử lại
+                if(streaming) setTimeout(sendFrames, 500);
+            });
+        }, 'image/jpeg', 0.6); // Nén JPEG mức 60% để truyền tải nhanh, giảm trễ
     }
 </script>
 {% endblock %}
