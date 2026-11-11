@@ -1,6 +1,19 @@
 {% extends 'base.html' %}
 
 {% block content %}
+<style>
+    /* Hiệu ứng chớp nháy viền đỏ báo nguy hiểm */
+    @keyframes blinkDanger {
+        0% { box-shadow: 0 0 10px #dc3545; border-color: #dc3545; }
+        50% { box-shadow: 0 0 30px #dc3545; border-color: #ff0000; }
+        100% { box-shadow: 0 0 10px #dc3545; border-color: #dc3545; }
+    }
+    .blink-warning {
+        animation: blinkDanger 1s infinite;
+        border-width: 3px !important;
+    }
+</style>
+
 <div class="text-center">
     <div class="card shadow-sm p-4 mb-4 bg-dark border-secondary">
         <h4 class="mb-3 text-light">Tải lên Video Giao thông để nhận diện</h4>
@@ -30,7 +43,7 @@
     </div>
 </div>
 
-<!-- Modal hiển thị Lịch sử (các ảnh thấp hơn) của một Class -->
+<!-- Modal hiển thị Lịch sử -->
 <div class="modal fade" id="historyModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content bg-dark text-light border-success">
@@ -39,9 +52,7 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Đóng"></button>
             </div>
             <div class="modal-body">
-                <div class="row" id="historyContainer">
-                    <!-- Các ảnh phụ sẽ được chèn vào đây -->
-                </div>
+                <div class="row" id="historyContainer"></div>
             </div>
         </div>
     </div>
@@ -52,7 +63,7 @@
 <script>
     let pollingInterval = null;
     let currentVideoUrl = "";
-    let globalDetections = {}; // Lưu trữ dữ liệu JSON để dùng cho Modal
+    let globalDetections = {};
 
     const replayBtn = document.getElementById('replayBtn');
     const videoResult = document.getElementById('videoResult');
@@ -61,11 +72,7 @@
 
     uploadBtn.addEventListener('click', () => {
         const fileInput = document.getElementById('videoUpload');
-
-        if (fileInput.files.length === 0) {
-            alert('Vui lòng chọn một file video!');
-            return;
-        }
+        if (fileInput.files.length === 0) { alert('Vui lòng chọn một file video!'); return; }
 
         const formData = new FormData();
         formData.append('video', fileInput.files[0]);
@@ -93,10 +100,7 @@
                 pollingInterval = setInterval(fetchBestDetections, 1500);
             }
         })
-        .catch(err => {
-            console.error(err);
-            alert("Lỗi tải video. Vui lòng kiểm tra kết nối.");
-        });
+        .catch(err => { console.error(err); alert("Lỗi tải video. Vui lòng kiểm tra kết nối."); });
     });
 
     replayBtn.addEventListener('click', () => {
@@ -108,12 +112,11 @@
         }
     });
 
-    // Cập nhật danh sách vật thể chính
     function fetchBestDetections() {
         fetch('/get_best_detections')
         .then(res => res.json())
         .then(data => {
-            globalDetections = data; // Lưu lại để dùng khi click
+            globalDetections = data;
             const container = document.getElementById('bestDetectionsContainer');
             const classNames = Object.keys(data);
 
@@ -121,21 +124,24 @@
                 container.innerHTML = '';
 
                 classNames.forEach(cls => {
-                    const topItem = data[cls][0]; // Lấy phần tử top 1 (tốt nhất)
-                    const count = data[cls].length; // Đếm số lượng ảnh trong lịch sử
+                    const topItem = data[cls][0];
+                    const count = data[cls].length;
 
-                    // Thêm class hover-card và onclick để gọi hàm showHistory
+                    // Nếu vật thể đang báo động, thêm class 'blink-warning' để nhấp nháy đỏ
+                    const dangerClass = topItem.is_warning ? 'blink-warning bg-black' : 'border-success bg-black';
+                    const distanceColor = topItem.is_warning ? 'text-danger fw-bold' : 'text-info';
+
                     const cardHTML = `
                         <div class="col-lg-3 col-md-4 col-sm-6 mb-3">
-                            <div class="card bg-black border-success h-100 shadow" style="cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.03)'" onmouseout="this.style.transform='scale(1)'" onclick="showHistory('${cls}')">
-                                <div style="height: 120px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #222;">
+                            <div class="card ${dangerClass} h-100 shadow" style="cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.03)'" onmouseout="this.style.transform='scale(1)'" onclick="showHistory('${cls}')">
+                                <div style="height: 120px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #1a1a1a;">
                                     <img src="${topItem.image_url}" style="max-height: 100%; max-width: 100%; object-fit: contain;" alt="${topItem.class_name}">
                                 </div>
                                 <div class="card-body p-2 text-start">
-                                    <h6 class="card-title text-success fw-bold mb-1 text-uppercase">${topItem.class_name}</h6>
+                                    <h6 class="card-title ${topItem.is_warning ? 'text-danger' : 'text-success'} fw-bold mb-1 text-uppercase">${topItem.class_name}</h6>
                                     <p class="card-text text-light mb-0" style="font-size: 0.85rem;">
+                                        <strong>Khoảng cách:</strong> <span class="${distanceColor}">${topItem.distance}</span><br>
                                         <strong>Độ tin cậy:</strong> <span class="text-warning">${topItem.confidence_display}%</span><br>
-                                        <strong>Tọa độ:</strong> <span class="text-secondary">[${topItem.bbox.join(', ')}]</span><br>
                                         ${count > 1 ? `<span class="badge bg-secondary mt-2">Xem thêm ${count - 1} ảnh khác</span>` : ''}
                                     </p>
                                 </div>
@@ -148,7 +154,6 @@
         });
     }
 
-    // Hàm hiển thị danh sách các độ chính xác thấp hơn trong Modal
     function showHistory(cls) {
         const historyData = globalDetections[cls];
         const title = document.getElementById('historyModalTitle');
@@ -158,9 +163,10 @@
         container.innerHTML = '';
 
         if (historyData && historyData.length > 1) {
-            // Lặp từ phần tử thứ 2 (index = 1) để bỏ qua ảnh Top 1 đã hiển thị bên ngoài
             for (let i = 1; i < historyData.length; i++) {
                 const item = historyData[i];
+                const distanceColor = item.is_warning ? 'text-danger fw-bold' : 'text-info';
+
                 const cardHTML = `
                     <div class="col-md-4 col-sm-6 mb-3">
                         <div class="card bg-black border-secondary h-100">
@@ -170,8 +176,8 @@
                             <div class="card-body p-2 text-start">
                                 <p class="card-text text-light mb-0" style="font-size: 0.85rem;">
                                     <strong>Top ${i + 1}</strong><br>
-                                    <strong>Độ tin cậy:</strong> <span class="text-warning">${item.confidence_display}%</span><br>
-                                    <strong>Tọa độ:</strong> <span class="text-secondary">[${item.bbox.join(', ')}]</span>
+                                    <strong>Khoảng cách:</strong> <span class="${distanceColor}">${item.distance}</span><br>
+                                    <strong>Độ tin cậy:</strong> <span class="text-warning">${item.confidence_display}%</span>
                                 </p>
                             </div>
                         </div>
@@ -183,7 +189,6 @@
             container.innerHTML = '<div class="col-12 text-center text-secondary">Chưa có nhận diện nào khác cho đối tượng này.</div>';
         }
 
-        // Hiện Modal
         const modal = new bootstrap.Modal(document.getElementById('historyModal'));
         modal.show();
     }
